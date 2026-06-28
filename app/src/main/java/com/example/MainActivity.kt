@@ -1365,13 +1365,49 @@ fun VideoPlayerDialog(
                                     .fillMaxWidth()
                                     .background(
                                         Brush.verticalGradient(
-                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                                         )
                                     )
                                     .padding(horizontal = 12.dp)
-                                    .padding(bottom = 12.dp, top = 24.dp)
+                                    .padding(bottom = 6.dp, top = 16.dp)
                             ) {
-                                // Timestamp & Progress slider row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Left: Mute/Unmute
+                                    IconButton(
+                                        onClick = { isMuted = !isMuted },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                            contentDescription = if (isMuted) "Unmute" else "Mute",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+
+                                    // Right: Fullscreen Toggle (Above the timeline, on the bottom right)
+                                    IconButton(
+                                        onClick = { isFullscreen = !isFullscreen },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                // Timestamp & Progress slider row (At the very bottom)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
@@ -1380,7 +1416,8 @@ fun VideoPlayerDialog(
                                         text = formatTime(currentPos),
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = Color.White,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
                                         ),
                                         modifier = Modifier.padding(horizontal = 4.dp)
                                     )
@@ -1399,51 +1436,20 @@ fun VideoPlayerDialog(
                                             activeTrackColor = ThemePrimaryLight,
                                             inactiveTrackColor = Color.White.copy(alpha = 0.35f)
                                         ),
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(24.dp)
                                     )
 
                                     Text(
                                         text = formatTime(duration),
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = Color.White,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
                                         ),
                                         modifier = Modifier.padding(horizontal = 4.dp)
                                     )
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Left: Mute/Unmute
-                                    IconButton(
-                                        onClick = { isMuted = !isMuted },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                                            contentDescription = if (isMuted) "Unmute" else "Mute",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-
-                                    // Right: Fullscreen Toggle
-                                    IconButton(
-                                        onClick = { isFullscreen = !isFullscreen },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
                                 }
                             }
                         }
