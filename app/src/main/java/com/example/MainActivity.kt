@@ -843,6 +843,8 @@ fun VideoGridHomeScreen() {
     selectedVideo?.let { video ->
         VideoPlayerDialog(
             video = video,
+            videoList = videoList,
+            onVideoSelect = { selectedVideo = it },
             onDismiss = { selectedVideo = null }
         )
     }
@@ -948,126 +950,248 @@ fun VideoThumbnailItem(
 @Composable
 fun VideoPlayerDialog(
     video: VideoItem,
+    videoList: List<VideoItem>,
+    onVideoSelect: (VideoItem) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var isFullscreen by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     var hasError by remember { mutableStateOf(false) }
+    var videoViewInstance by remember { mutableStateOf<VideoView?>(null) }
+    var mediaPlayerInstance by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    var isVideoPlaying by remember { mutableStateOf(true) }
+    var isMuted by remember { mutableStateOf(false) }
+    var currentPos by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var controlsVisible by remember { mutableStateOf(true) }
+
+    // Toggle auto-hide timer for controls
+    LaunchedEffect(controlsVisible, isVideoPlaying) {
+        if (controlsVisible && isVideoPlaying) {
+            kotlinx.coroutines.delay(4000)
+            controlsVisible = false
+        }
+    }
+
+    // Coroutine loop to update progress indicator
+    LaunchedEffect(video, isVideoPlaying) {
+        while (true) {
+            videoViewInstance?.let { vv ->
+                try {
+                    currentPos = vv.currentPosition.toLong()
+                    val totalDuration = vv.duration.toLong()
+                    if (totalDuration > 0) {
+                        duration = totalDuration
+                    }
+                } catch (e: Exception) {
+                    // Ignore errors during state transition
+                }
+            }
+            kotlinx.coroutines.delay(250)
+        }
+    }
+
+    // Handle play/pause commands
+    LaunchedEffect(isVideoPlaying) {
+        videoViewInstance?.let { vv ->
+            try {
+                if (isVideoPlaying) {
+                    if (!vv.isPlaying) vv.start()
+                } else {
+                    if (vv.isPlaying) vv.pause()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // Handle mute state commands
+    LaunchedEffect(isMuted, mediaPlayerInstance) {
+        mediaPlayerInstance?.let { mp ->
+            try {
+                if (isMuted) {
+                    mp.setVolume(0f, 0f)
+                } else {
+                    mp.setVolume(1f, 1f)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // Format helper function for display timestamp (mm:ss)
+    fun formatTime(ms: Long): String {
+        val totalSeconds = maxOf(0L, ms / 1000)
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format("%02d:%02d", minutes, seconds)
+    }
+
+    // Index calculation for Prev and Next buttons
+    val currentIndex = videoList.indexOfFirst { it.id == video.id }
+    val hasPrev = videoList.size > 1
+    val hasNext = videoList.size > 1
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true,
-            dismissOnClickOutside = true
+            dismissOnClickOutside = !isFullscreen
         )
     ) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .wrapContentHeight()
-                .padding(16.dp)
-                .testTag("video_player_dialog"),
-            shape = RoundedCornerShape(24.dp),
+            modifier = if (isFullscreen) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier
+                    .fillMaxWidth(0.95f)
+                    .wrapContentHeight()
+                    .padding(16.dp)
+                    .testTag("video_player_dialog")
+            },
+            shape = if (isFullscreen) RoundedCornerShape(0.dp) else RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = ThemeBg),
-            border = BorderStroke(1.dp, ThemeBorder),
+            border = if (isFullscreen) null else BorderStroke(1.dp, ThemeBorder),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = if (isFullscreen) Modifier.fillMaxSize() else Modifier.padding(16.dp)
             ) {
-                // Dialog Title Header
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = video.title,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = ThemeTextPrimary
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (video.isLocal) "Local Video File" else "Streaming Video Source",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = ThemeTextSecondary
-                            )
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDismiss,
+                // Dialog Title Header (Only visible if not in Fullscreen)
+                if (!isFullscreen) {
+                    Row(
                         modifier = Modifier
-                            .background(ThemePrimary.copy(alpha = 0.12f), shape = CircleShape)
-                            .size(36.dp)
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close player dialog",
-                            tint = ThemePrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = video.title,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = ThemeTextPrimary
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = if (video.isLocal) "Local Video File" else "Streaming Video Source",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = ThemeTextSecondary
+                                )
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .background(ThemePrimary.copy(alpha = 0.12f), shape = CircleShape)
+                                .size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close player dialog",
+                                tint = ThemePrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
-                // Android Native Video Player Box
+                // Video Player Container
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1.77f) // Landscape cinematic 16:9
-                        .background(Color.Black, shape = RoundedCornerShape(16.dp))
-                        .clip(RoundedCornerShape(16.dp)),
+                    modifier = if (isFullscreen) {
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1.77f) // Landscape cinematic 16:9
+                            .background(Color.Black, shape = RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                    },
                     contentAlignment = Alignment.Center
                 ) {
-                    AndroidView(
-                        factory = { ctx ->
-                            VideoView(ctx).apply {
-                                val mediaController = MediaController(ctx)
-                                mediaController.setAnchorView(this)
-                                setMediaController(mediaController)
-                                
-                                val uri = if (video.videoUrl.startsWith("file:///android_asset/")) {
-                                    try {
-                                        val assetPath = video.videoUrl.substringAfter("file:///android_asset/")
-                                        val cacheFile = java.io.File(ctx.cacheDir, java.io.File(assetPath).name)
-                                        if (!cacheFile.exists()) {
-                                            ctx.assets.open(assetPath).use { inputStream ->
-                                                java.io.FileOutputStream(cacheFile).use { outputStream ->
-                                                    inputStream.copyTo(outputStream)
+                    // Re-create player whenever the video item changes to ensure a pristine state.
+                    key(video) {
+                        AndroidView(
+                            factory = { ctx ->
+                                VideoView(ctx).apply {
+                                    // Complete custom implementation overlaying controllers in Compose,
+                                    // so we do not use native media controller.
+                                    setMediaController(null)
+                                    
+                                    val uri = if (video.videoUrl.startsWith("file:///android_asset/")) {
+                                        try {
+                                            val assetPath = video.videoUrl.substringAfter("file:///android_asset/")
+                                            val cacheFile = java.io.File(ctx.cacheDir, java.io.File(assetPath).name)
+                                            if (!cacheFile.exists()) {
+                                                ctx.assets.open(assetPath).use { inputStream ->
+                                                    java.io.FileOutputStream(cacheFile).use { outputStream ->
+                                                        inputStream.copyTo(outputStream)
+                                                    }
                                                 }
                                             }
+                                            Uri.fromFile(cacheFile)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            Uri.parse(video.videoUrl)
                                         }
-                                        Uri.fromFile(cacheFile)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
+                                    } else {
                                         Uri.parse(video.videoUrl)
                                     }
-                                } else {
-                                    Uri.parse(video.videoUrl)
+                                    
+                                    setVideoURI(uri)
+                                    
+                                    setOnPreparedListener { mp ->
+                                        isLoading = false
+                                        mediaPlayerInstance = mp
+                                        
+                                        // Set volume according to the muted state
+                                        if (isMuted) {
+                                            mp.setVolume(0f, 0f)
+                                        } else {
+                                            mp.setVolume(1f, 1f)
+                                        }
+                                        
+                                        duration = duration.toLong()
+                                        if (isVideoPlaying) {
+                                            start()
+                                        }
+                                    }
+                                    
+                                    setOnCompletionListener {
+                                        // Auto-play next or loop
+                                        if (hasNext && currentIndex != -1) {
+                                            val nextIndex = if (currentIndex < videoList.size - 1) currentIndex + 1 else 0
+                                            onVideoSelect(videoList[nextIndex])
+                                        } else {
+                                            isVideoPlaying = false
+                                        }
+                                    }
+                                    
+                                    setOnErrorListener { _, _, _ ->
+                                        isLoading = false
+                                        hasError = true
+                                        true
+                                    }
+                                    
+                                    videoViewInstance = this
                                 }
-                                
-                                setVideoURI(uri)
-                                
-                                setOnPreparedListener { mp ->
-                                    isLoading = false
-                                    mp.start() // Auto start playback
+                            },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable {
+                                    controlsVisible = !controlsVisible
                                 }
-                                
-                                setOnErrorListener { _, _, _ ->
-                                    isLoading = false
-                                    hasError = true
-                                    true
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                        )
+                    }
 
                     // Loading Spinner Overlay
                     if (isLoading) {
@@ -1120,19 +1244,225 @@ fun VideoPlayerDialog(
                             }
                         }
                     }
+
+                    // Custom Overlay controls (inspired by YouTube premium interface overlay)
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = controlsVisible && !isLoading && !hasError,
+                        enter = fadeIn(animationSpec = spring()),
+                        exit = fadeOut(animationSpec = spring())
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.45f))
+                                .clickable { controlsVisible = false }
+                        ) {
+                            // Close/Back button in Fullscreen mode inside the overlay
+                            if (isFullscreen) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.TopStart)
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { isFullscreen = false },
+                                        modifier = Modifier
+                                            .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+                                            .size(40.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Exit Fullscreen",
+                                            tint = Color.White
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = video.title,
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            // Center Controller Action Row (Prev, Play/Pause, Next)
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Previous Video Button
+                                if (hasPrev && currentIndex != -1) {
+                                    IconButton(
+                                        onClick = {
+                                            val prevIndex = if (currentIndex > 0) currentIndex - 1 else videoList.size - 1
+                                            onVideoSelect(videoList[prevIndex])
+                                        },
+                                        modifier = Modifier
+                                            .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+                                            .size(48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SkipPrevious,
+                                            contentDescription = "Previous Video",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(24.dp))
+                                }
+
+                                // Play / Pause Button
+                                IconButton(
+                                    onClick = { isVideoPlaying = !isVideoPlaying },
+                                    modifier = Modifier
+                                        .background(Color.Black.copy(alpha = 0.6f), shape = CircleShape)
+                                        .size(64.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isVideoPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = if (isVideoPlaying) "Pause" else "Play",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
+
+                                // Next Video Button
+                                if (hasNext && currentIndex != -1) {
+                                    Spacer(modifier = Modifier.width(24.dp))
+                                    IconButton(
+                                        onClick = {
+                                            val nextIndex = if (currentIndex < videoList.size - 1) currentIndex + 1 else 0
+                                            onVideoSelect(videoList[nextIndex])
+                                        },
+                                        modifier = Modifier
+                                            .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+                                            .size(48.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SkipNext,
+                                            contentDescription = "Next Video",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Bottom Controls (Seek bar / Slider, Mute, Timestamps, Fullscreen)
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                                        )
+                                    )
+                                    .padding(horizontal = 12.dp)
+                                    .padding(bottom = 12.dp, top = 24.dp)
+                            ) {
+                                // Timestamp & Progress slider row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = formatTime(currentPos),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+
+                                    Slider(
+                                        value = currentPos.toFloat().coerceIn(0f, maxOf(1f, duration.toFloat())),
+                                        onValueChange = { newValue ->
+                                            currentPos = newValue.toLong()
+                                        },
+                                        onValueChangeFinished = {
+                                            videoViewInstance?.seekTo(currentPos.toInt())
+                                        },
+                                        valueRange = 0f..maxOf(1f, duration.toFloat()),
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = ThemePrimaryLight,
+                                            activeTrackColor = ThemePrimaryLight,
+                                            inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    Text(
+                                        text = formatTime(duration),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Left: Mute/Unmute
+                                    IconButton(
+                                        onClick = { isMuted = !isMuted },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                            contentDescription = if (isMuted) "Unmute" else "Mute",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    // Right: Fullscreen Toggle
+                                    IconButton(
+                                        onClick = { isFullscreen = !isFullscreen },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                // Close / Info prompt (Only shown when not in Fullscreen)
+                if (!isFullscreen) {
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                // Fun prompt in Singlish
-                Text(
-                    text = "💡 Machan, video eka pause karanna nathnam track eka seek karanna video frame eka uda click karanna control bars labaganna.",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = ThemeTextSecondary,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
+                    Text(
+                        text = "💡 Machan, YouTube eke vage controls up-to-down display karanna video eka click karanna. Slider eken track eka seek karanna puluvan, prev/next ekka video select karanna puluvan.",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = ThemeTextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
+                        )
                     )
-                )
+                }
             }
         }
     }
