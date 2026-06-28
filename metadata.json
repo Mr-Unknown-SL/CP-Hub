@@ -1,5 +1,5 @@
 {
-  "name": "V Hub",
+  "name": "CP Hub",
   "description": "A beautiful video grid application with customized permission controls and video playback features.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
