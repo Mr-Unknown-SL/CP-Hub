@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +55,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.pm.ActivityInfo
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.ui.theme.MyApplicationTheme
@@ -965,6 +974,50 @@ fun VideoPlayerDialog(
     var duration by remember { mutableLongStateOf(0L) }
     var controlsVisible by remember { mutableStateOf(true) }
 
+    val context = LocalContext.current
+    val activity = remember(context) { context as? android.app.Activity }
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    // Sync isFullscreen with the actual physical landscape orientation of the device
+    LaunchedEffect(isLandscape) {
+        if (isLandscape && !isFullscreen) {
+            isFullscreen = true
+        }
+    }
+
+    // Reset orientation back to standard when the dialog is dismissed
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // Handle manual fullscreen toggle via button clicks
+    val onFullscreenToggle = {
+        val targetFullscreen = !isFullscreen
+        isFullscreen = targetFullscreen
+        try {
+            if (targetFullscreen) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Dynamic sizing of the controls based on screen orientation to prevent overlap in landscape
+    val playPauseSize = if (isLandscape) 48.dp else 64.dp
+    val playPauseIconSize = if (isLandscape) 28.dp else 36.dp
+    val navButtonSize = if (isLandscape) 36.dp else 48.dp
+    val navIconSize = if (isLandscape) 18.dp else 24.dp
+
     // Toggle auto-hide timer for controls
     LaunchedEffect(controlsVisible, isVideoPlaying) {
         if (controlsVisible && isVideoPlaying) {
@@ -1267,13 +1320,20 @@ fun VideoPlayerDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     IconButton(
-                                        onClick = { isFullscreen = false },
+                                        onClick = {
+                                            isFullscreen = false
+                                            try {
+                                                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        },
                                         modifier = Modifier
                                             .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
                                             .size(40.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.ArrowBack,
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                             contentDescription = "Exit Fullscreen",
                                             tint = Color.White
                                         )
@@ -1309,16 +1369,16 @@ fun VideoPlayerDialog(
                                         },
                                         modifier = Modifier
                                             .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
-                                            .size(48.dp)
+                                            .size(navButtonSize)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.SkipPrevious,
                                             contentDescription = "Previous Video",
                                             tint = Color.White,
-                                            modifier = Modifier.size(24.dp)
+                                            modifier = Modifier.size(navIconSize)
                                         )
                                     }
-                                    Spacer(modifier = Modifier.width(24.dp))
+                                    Spacer(modifier = Modifier.width(if (isLandscape) 16.dp else 24.dp))
                                 }
 
                                 // Play / Pause Button
@@ -1326,19 +1386,19 @@ fun VideoPlayerDialog(
                                     onClick = { isVideoPlaying = !isVideoPlaying },
                                     modifier = Modifier
                                         .background(Color.Black.copy(alpha = 0.6f), shape = CircleShape)
-                                        .size(64.dp)
+                                        .size(playPauseSize)
                                 ) {
                                     Icon(
                                         imageVector = if (isVideoPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                         contentDescription = if (isVideoPlaying) "Pause" else "Play",
                                         tint = Color.White,
-                                        modifier = Modifier.size(36.dp)
+                                        modifier = Modifier.size(playPauseIconSize)
                                     )
                                 }
 
                                 // Next Video Button
                                 if (hasNext && currentIndex != -1) {
-                                    Spacer(modifier = Modifier.width(24.dp))
+                                    Spacer(modifier = Modifier.width(if (isLandscape) 16.dp else 24.dp))
                                     IconButton(
                                         onClick = {
                                             val nextIndex = if (currentIndex < videoList.size - 1) currentIndex + 1 else 0
@@ -1346,112 +1406,162 @@ fun VideoPlayerDialog(
                                         },
                                         modifier = Modifier
                                             .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
-                                            .size(48.dp)
+                                            .size(navButtonSize)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.SkipNext,
                                             contentDescription = "Next Video",
                                             tint = Color.White,
-                                            modifier = Modifier.size(24.dp)
+                                            modifier = Modifier.size(navIconSize)
                                         )
                                     }
                                 }
                             }
 
-                            // Bottom Controls (Seek bar / Slider, Mute, Timestamps, Fullscreen)
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
-                                        )
-                                    )
-                                    .padding(horizontal = 12.dp)
-                                    .padding(bottom = 6.dp, top = 16.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Left: Mute/Unmute
-                                    IconButton(
-                                        onClick = { isMuted = !isMuted },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                                            contentDescription = if (isMuted) "Unmute" else "Mute",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-
-                                    // Right: Fullscreen Toggle (Above the timeline, on the bottom right)
-                                    IconButton(
-                                        onClick = { isFullscreen = !isFullscreen },
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                            contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-                                // Timestamp & Progress slider row (At the very bottom)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = formatTime(currentPos),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
-                                        ),
-                                        modifier = Modifier.padding(horizontal = 4.dp)
-                                    )
-
-                                    Slider(
-                                        value = currentPos.toFloat().coerceIn(0f, maxOf(1f, duration.toFloat())),
-                                        onValueChange = { newValue ->
-                                            currentPos = newValue.toLong()
-                                        },
-                                        onValueChangeFinished = {
-                                            videoViewInstance?.seekTo(currentPos.toInt())
-                                        },
-                                        valueRange = 0f..maxOf(1f, duration.toFloat()),
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = ThemePrimaryLight,
-                                            activeTrackColor = ThemePrimaryLight,
-                                            inactiveTrackColor = Color.White.copy(alpha = 0.35f)
-                                        ),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(24.dp)
-                                    )
-
-                                    Text(
-                                        text = formatTime(duration),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
-                                        ),
-                                        modifier = Modifier.padding(horizontal = 4.dp)
-                                    )
-                                }
-                            }
+                             // Bottom Controls (Seek bar / Custom Canvas Timeline, Mute, Timestamps, Fullscreen)
+                             Column(
+                                 modifier = Modifier
+                                     .align(Alignment.BottomCenter)
+                                     .fillMaxWidth()
+                                     .background(
+                                         Brush.verticalGradient(
+                                             colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                         )
+                                     )
+                                     .padding(horizontal = 12.dp)
+                                     .padding(bottom = 6.dp, top = 16.dp)
+                             ) {
+                                 Row(
+                                     modifier = Modifier
+                                         .fillMaxWidth()
+                                         .padding(horizontal = 4.dp),
+                                     horizontalArrangement = Arrangement.SpaceBetween,
+                                     verticalAlignment = Alignment.CenterVertically
+                                 ) {
+                                     // Left: Mute/Unmute
+                                     IconButton(
+                                         onClick = { isMuted = !isMuted },
+                                         modifier = Modifier.size(36.dp)
+                                     ) {
+                                         Icon(
+                                             imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                                             contentDescription = if (isMuted) "Unmute" else "Mute",
+                                             tint = Color.White,
+                                             modifier = Modifier.size(22.dp)
+                                         )
+                                     }
+ 
+                                     // Right: Fullscreen Toggle (Above the timeline, on the bottom right)
+                                     IconButton(
+                                         onClick = { onFullscreenToggle() },
+                                         modifier = Modifier.size(36.dp)
+                                     ) {
+                                         Icon(
+                                             imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                             contentDescription = if (isFullscreen) "Exit Fullscreen" else "Fullscreen",
+                                             tint = Color.White,
+                                             modifier = Modifier.size(24.dp)
+                                         )
+                                     }
+                                 }
+ 
+                                 Spacer(modifier = Modifier.height(2.dp))
+ 
+                                 // Timestamp & Custom Canvas Progress slider row (At the very bottom)
+                                 Row(
+                                     modifier = Modifier.fillMaxWidth(),
+                                     verticalAlignment = Alignment.CenterVertically
+                                 ) {
+                                     Text(
+                                         text = formatTime(currentPos),
+                                         style = MaterialTheme.typography.labelSmall.copy(
+                                             color = Color.White,
+                                             fontWeight = FontWeight.Bold,
+                                             fontSize = 11.sp
+                                         ),
+                                         modifier = Modifier.padding(horizontal = 6.dp)
+                                     )
+ 
+                                     // Custom Sleek Seek Bar
+                                     BoxWithConstraints(
+                                         modifier = Modifier
+                                             .weight(1f)
+                                             .height(24.dp)
+                                     ) {
+                                         val widthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
+                                         val progressFraction = if (duration > 0) currentPos.toFloat() / duration.toFloat() else 0f
+                                         val activeColor = ThemePrimaryLight
+                                         val inactiveColor = Color.White.copy(alpha = 0.3f)
+ 
+                                         Box(
+                                             modifier = Modifier
+                                                 .fillMaxSize()
+                                                 .pointerInput(duration, widthPx) {
+                                                     detectTapGestures { offset ->
+                                                        if (duration > 0) {
+                                                            val progress = (offset.x / widthPx).coerceIn(0f, 1f)
+                                                            val targetPos = (progress * duration).toLong()
+                                                            currentPos = targetPos
+                                                            videoViewInstance?.seekTo(targetPos.toInt())
+                                                        }
+                                                     }
+                                                 }
+                                                 .pointerInput(duration, widthPx) {
+                                                     detectHorizontalDragGestures { change, dragAmount ->
+                                                        change.consume()
+                                                        if (duration > 0) {
+                                                            val progress = (change.position.x / widthPx).coerceIn(0f, 1f)
+                                                            val targetPos = (progress * duration).toLong()
+                                                            currentPos = targetPos
+                                                            videoViewInstance?.seekTo(targetPos.toInt())
+                                                        }
+                                                     }
+                                                 }
+                                         ) {
+                                             Canvas(modifier = Modifier.fillMaxSize()) {
+                                                 val cy = size.height / 2f
+                                                 val trackHeight = 4.dp.toPx()
+                                                 val activeWidth = size.width * progressFraction
+                                                 
+                                                 // Inactive track (grey background)
+                                                 drawLine(
+                                                     color = inactiveColor,
+                                                     start = Offset(0f, cy),
+                                                     end = Offset(size.width, cy),
+                                                     strokeWidth = trackHeight,
+                                                     cap = StrokeCap.Round
+                                                 )
+                                                 
+                                                 // Active track (primary progress)
+                                                 drawLine(
+                                                     color = activeColor,
+                                                     start = Offset(0f, cy),
+                                                     end = Offset(activeWidth, cy),
+                                                     strokeWidth = trackHeight,
+                                                     cap = StrokeCap.Round
+                                                 )
+                                                 
+                                                 // Thumb (small elegant circle indicator)
+                                                 drawCircle(
+                                                     color = activeColor,
+                                                     radius = 6.dp.toPx(),
+                                                     center = Offset(activeWidth, cy)
+                                                 )
+                                             }
+                                         }
+                                     }
+ 
+                                     Text(
+                                         text = formatTime(duration),
+                                         style = MaterialTheme.typography.labelSmall.copy(
+                                             color = Color.White,
+                                             fontWeight = FontWeight.Bold,
+                                             fontSize = 11.sp
+                                         ),
+                                         modifier = Modifier.padding(horizontal = 6.dp)
+                                     )
+                                 }
+                             }
                         }
                     }
                 }
