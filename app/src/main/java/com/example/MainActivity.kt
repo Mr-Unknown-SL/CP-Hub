@@ -95,6 +95,9 @@ class MainActivity : ComponentActivity() {
 fun MainAppScreen() {
     val context = LocalContext.current
     
+    // Splash Screen State
+    var showSplashScreen by remember { mutableStateOf(true) }
+    
     // Permission States
     var hasContactsPermission by remember { mutableStateOf(false) }
     var hasNotificationPermission by remember { mutableStateOf(false) }
@@ -103,6 +106,12 @@ fun MainAppScreen() {
     // Main UI transition state based on permissions
     var showPermissionPage by remember { mutableStateOf(true) }
     var isInitialCheck by remember { mutableStateOf(true) }
+
+    // Splash screen timer
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(2000)
+        showSplashScreen = false
+    }
 
     // Helper to check current permissions
     fun updatePermissionStates() {
@@ -164,25 +173,106 @@ fun MainAppScreen() {
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = ThemeBg
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            if (showPermissionPage) {
-                PermissionScreen(
-                    hasContacts = hasContactsPermission,
-                    hasNotification = hasNotificationPermission,
-                    hasStorage = hasStoragePermission,
-                    onCheckPermissions = { updatePermissionStates() }
-                )
-            } else {
-                VideoGridHomeScreen()
+    if (showSplashScreen) {
+        SplashScreen()
+    } else {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = ThemeBg
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                if (showPermissionPage) {
+                    PermissionScreen(
+                        hasContacts = hasContactsPermission,
+                        hasNotification = hasNotificationPermission,
+                        hasStorage = hasStoragePermission,
+                        onCheckPermissions = { updatePermissionStates() }
+                    )
+                } else {
+                    VideoGridHomeScreen()
+                }
             }
+        }
+    }
+}
+
+@Composable
+fun SplashScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF1D1233),
+                        Color(0xFF0F081D)
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Elegant container for the logo
+            Box(
+                modifier = Modifier
+                    .size(160.dp)
+                    .background(
+                        color = Color(0xFF281A45),
+                        shape = RoundedCornerShape(36.dp)
+                    )
+                    .border(
+                        BorderStroke(2.dp, Color(0xFFCAC4D0).copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(36.dp)
+                    )
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = R.drawable.img_app_logo_1782630778041,
+                    contentDescription = "CP HUB Logo",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(28.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Text(
+                text = "CP HUB",
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp
+                )
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "Your Premium Media Hub",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = Color.White.copy(alpha = 0.6f),
+                    letterSpacing = 1.sp
+                )
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            CircularProgressIndicator(
+                color = Color(0xFFCAC4D0),
+                trackColor = Color(0xFF1D1233),
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }
