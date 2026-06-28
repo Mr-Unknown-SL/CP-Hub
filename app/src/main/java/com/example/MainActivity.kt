@@ -102,6 +102,7 @@ fun MainAppScreen() {
     
     // Main UI transition state based on permissions
     var showPermissionPage by remember { mutableStateOf(true) }
+    var isInitialCheck by remember { mutableStateOf(true) }
 
     // Helper to check current permissions
     fun updatePermissionStates() {
@@ -124,9 +125,24 @@ fun MainAppScreen() {
                 context, Manifest.permission.READ_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
         }
+    }
 
-        // We require all three permissions to navigate to the video home screen
-        showPermissionPage = !(hasContactsPermission && hasNotificationPermission && hasStoragePermission)
+    val allGranted = hasContactsPermission && hasNotificationPermission && hasStoragePermission
+
+    LaunchedEffect(allGranted) {
+        if (allGranted) {
+            if (isInitialCheck) {
+                showPermissionPage = false
+                isInitialCheck = false
+            } else {
+                // Wait for 1.2s so user can visually see red 'Required' transition to green 'Success'
+                kotlinx.coroutines.delay(1200)
+                showPermissionPage = false
+            }
+        } else {
+            showPermissionPage = true
+            isInitialCheck = false
+        }
     }
 
     // Check states initially and when app resumes
@@ -428,34 +444,56 @@ fun PermissionItemCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Beautifully animated Status Icon (✅ or ❎)
-            Box(
-                modifier = Modifier.size(36.dp),
-                contentAlignment = Alignment.Center
+            // Beautiful status container with text badge + animated icon
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isGranted,
-                    enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
-                    exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut()
+                // Status Text Badge
+                Box(
+                    modifier = Modifier
+                        .background(statusColor.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Allowed",
-                        tint = Color(0xFF2ECC71),
-                        modifier = Modifier.size(30.dp)
+                    Text(
+                        text = if (isGranted) "Success" else "Required",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = statusColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
                     )
                 }
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = !isGranted,
-                    enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
-                    exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut()
+
+                // Beautifully animated Status Icon (✅ or ❎)
+                Box(
+                    modifier = Modifier.size(24.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Required",
-                        tint = Color(0xFFFF5252),
-                        modifier = Modifier.size(30.dp)
-                    )
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isGranted,
+                        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+                        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Allowed",
+                            tint = Color(0xFF2ECC71),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = !isGranted,
+                        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+                        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Required",
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -478,37 +516,43 @@ fun VideoGridHomeScreen() {
         }
     }
     
-    // Default pre-loaded test videos from high-quality public repositories
-    val defaultVideos = remember {
-        listOf(
-            VideoItem("1", "Big Buck Bunny", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg", duration = "9:56"),
-            VideoItem("2", "Elephant's Dream", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg", duration = "10:53"),
-            VideoItem("3", "For Bigger Blazes", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg", duration = "0:15"),
-            VideoItem("4", "For Bigger Escapes", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerEscapes.jpg", duration = "0:15"),
-            VideoItem("5", "For Bigger Fun", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerFun.jpg", duration = "0:15"),
-            VideoItem("6", "For Bigger Joyrides", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerJoyrides.jpg", duration = "0:15"),
-            VideoItem("7", "For Bigger Meltdowns", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerMeltdowns.jpg", duration = "0:15"),
-            VideoItem("8", "Sintel Test Walk", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg", duration = "0:52"),
-            VideoItem("9", "Subaru Outback", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/SubaruOutbackOnStreetAndDirt.jpg", duration = "9:54"),
-            VideoItem("10", "Tears of Steel", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg", duration = "12:14"),
-            VideoItem("11", "We Are Going", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/WeAreGoingOnBullrun.jpg", duration = "0:47"),
-            VideoItem("12", "What Car Can", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/WhatCarCanYouGetForAGrand.jpg", duration = "9:45"),
-            VideoItem("13", "Forest Flyover", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg", duration = "4:12"),
-            VideoItem("14", "Deep Blue Water", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg", duration = "5:18"),
-            VideoItem("15", "Sunset Cinematic", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerBlazes.jpg", duration = "2:30"),
-            VideoItem("16", "Metro Expressway", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerEscapes.jpg", duration = "1:45"),
-            VideoItem("17", "Nature Wildlife", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerFun.jpg", duration = "8:22"),
-            VideoItem("18", "Neon Cyber City", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerJoyrides.jpg", duration = "3:55"),
-            VideoItem("19", "Abstract Shapes", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerMeltdowns.jpg", duration = "0:15"),
-            VideoItem("20", "Sintel Flight", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg", duration = "0:15")
-        )
-    }
-
-    // Dynamic Video List (starts with default 20)
-    val videoList = remember { mutableStateListOf<VideoItem>().apply { addAll(defaultVideos) } }
+    val videoList = remember { mutableStateListOf<VideoItem>() }
     
     // Active playback selection
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
+
+    // Load local videos from the assets folder 'vids'
+    LaunchedEffect(Unit) {
+        try {
+            val assetManager = context.assets
+            val files = assetManager.list("vids") ?: emptyArray()
+            val videoExtensions = listOf(".mp4", ".mkv", ".3gp", ".webm", ".mov")
+            val videoFiles = files.filter { file ->
+                videoExtensions.any { ext -> file.endsWith(ext, ignoreCase = true) }
+            }
+
+            videoList.clear()
+            videoFiles.forEachIndexed { index, fileName ->
+                val title = if (fileName.contains(".")) {
+                    fileName.substringBeforeLast(".")
+                } else {
+                    fileName
+                }
+                videoList.add(
+                    VideoItem(
+                        id = (index + 1).toString(),
+                        title = title,
+                        videoUrl = "file:///android_asset/vids/$fileName",
+                        thumbnailUrl = null,
+                        isLocal = true,
+                        duration = "Local"
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -581,19 +625,69 @@ fun VideoGridHomeScreen() {
                 )
             }
 
-            // Beautiful Grid View showing exactly 4 videos per row
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(videoList) { video ->
-                    VideoThumbnailItem(
-                        video = video,
-                        onClick = { selectedVideo = video }
-                    )
+            if (videoList.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(vertical = 24.dp)
+                        .background(Color.White, shape = RoundedCornerShape(24.dp))
+                        .border(BorderStroke(1.dp, ThemeBorderLight), shape = RoundedCornerShape(24.dp))
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .background(ThemePrimaryLight, shape = CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Empty Folder",
+                                tint = ThemePrimary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "vids folder eka empty machan!",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = ThemeTextPrimary
+                            ),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Oyaage video files 'assets/vids' folder ekata dala mehi pradarshanaya karanna.",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = ThemeTextSecondary,
+                                lineHeight = 20.sp
+                            ),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                // Beautiful Grid View showing exactly 4 videos per row
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(videoList) { video ->
+                        VideoThumbnailItem(
+                            video = video,
+                            onClick = { selectedVideo = video }
+                        )
+                    }
                 }
             }
         }
@@ -842,12 +936,33 @@ fun VideoPlayerDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     AndroidView(
-                        factory = { context ->
-                            VideoView(context).apply {
-                                val mediaController = MediaController(context)
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                val mediaController = MediaController(ctx)
                                 mediaController.setAnchorView(this)
                                 setMediaController(mediaController)
-                                setVideoURI(Uri.parse(video.videoUrl))
+                                
+                                val uri = if (video.videoUrl.startsWith("file:///android_asset/")) {
+                                    try {
+                                        val assetPath = video.videoUrl.substringAfter("file:///android_asset/")
+                                        val cacheFile = java.io.File(ctx.cacheDir, java.io.File(assetPath).name)
+                                        if (!cacheFile.exists()) {
+                                            ctx.assets.open(assetPath).use { inputStream ->
+                                                java.io.FileOutputStream(cacheFile).use { outputStream ->
+                                                    inputStream.copyTo(outputStream)
+                                                }
+                                            }
+                                        }
+                                        Uri.fromFile(cacheFile)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        Uri.parse(video.videoUrl)
+                                    }
+                                } else {
+                                    Uri.parse(video.videoUrl)
+                                }
+                                
+                                setVideoURI(uri)
                                 
                                 setOnPreparedListener { mp ->
                                     isLoading = false
