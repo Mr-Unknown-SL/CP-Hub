@@ -63,6 +63,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalConfiguration
 import android.content.pm.ActivityInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.ui.theme.MyApplicationTheme
@@ -599,9 +612,138 @@ fun PermissionItemCard(
     }
 }
 
+suspend fun saveAndSyncToGitHub(
+    videoNames: List<String>,
+    onProgress: (String) -> Unit
+): Result<Int> = withContext(Dispatchers.IO) {
+    try {
+        // 1. Generate text file in CP Hub folder
+        val cpHubDir = java.io.File(Environment.getExternalStorageDirectory(), "CP Hub")
+        if (!cpHubDir.exists()) {
+            cpHubDir.mkdirs()
+        }
+        
+        val sdf = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+        val timestamp = sdf.format(java.util.Date())
+        val fileName = "video_list_$timestamp.txt"
+        val file = java.io.File(cpHubDir, fileName)
+        
+        onProgress("Saving current video names to $fileName...")
+        file.writeText(videoNames.joinToString("\n"))
+        
+        // Brief delay to allow the UI to reflect saving
+        delay(300)
+        
+        // 2. Scan CP Hub folder for all .txt files
+        val files = cpHubDir.listFiles() ?: emptyArray()
+        val txtFiles = files.filter { it.isFile && it.name.endsWith(".txt", ignoreCase = true) }
+        
+        if (txtFiles.isEmpty()) {
+            return@withContext Result.failure(Exception("No .txt files found in CP Hub folder to upload!"))
+        }
+        
+        // 3. Setup credentials from BuildConfig with fallback to provided values
+        val githubUsername = if (com.example.BuildConfig.GITHUB_USERNAME.isNotEmpty() && com.example.BuildConfig.GITHUB_USERNAME != "GITHUB_USERNAME_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_USERNAME else "GH_USERNAME"
+        val githubToken = if (com.example.BuildConfig.GITHUB_TOKEN.isNotEmpty() && com.example.BuildConfig.GITHUB_TOKEN != "GITHUB_TOKEN_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_TOKEN else "GH_TOKEN"
+        val githubRepo = if (com.example.BuildConfig.GITHUB_REPO.isNotEmpty() && com.example.BuildConfig.GITHUB_REPO != "GITHUB_REPO_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_REPO else "GH_REPO"
+        
+        if (githubToken.isEmpty()) {
+            return@withContext Result.failure(Exception("GitHub token is empty. Please set it!"))
+        }
+        
+        var successCount = 0
+        var failMessage = ""
+        
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+            
+        for (txtFile in txtFiles) {
+            onProgress("Uploading ${txtFile.name} to GitHub...")
+            
+            val fName = txtFile.name
+            val contentBytes = txtFile.readBytes()
+            val base64Content = android.util.Base64.encodeToString(contentBytes, android.util.Base64.NO_WRAP)
+            
+            val url = "https://api.github.com/repos/$githubUsername/$githubRepo/contents/$fName"
+            
+            // Step A: Check if the file already exists on GitHub to obtain its SHA
+            var existingSha: String? = null
+            val getRequest = okhttp3.Request.Builder()
+                .url(url)
+                .header("Authorization", "token $githubToken")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .header("User-Agent", "CP-Hub-Android-App")
+                .get()
+                .build()
+                
+            try {
+                client.newCall(getRequest).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val bodyStr = response.body?.string()
+                        if (!bodyStr.isNullOrEmpty()) {
+                            val json = org.json.JSONObject(bodyStr)
+                            existingSha = json.optString("sha")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            
+            // Step B: Put/Commit the file
+            val jsonBody = org.json.JSONObject().apply {
+                put("message", "Commit ${txtFile.name} via CP Hub Android app")
+                put("content", base64Content)
+                if (existingSha != null) {
+                    put("sha", existingSha)
+                }
+            }
+            
+            val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
+            val requestBody = jsonBody.toString().toRequestBody(mediaType)
+            
+            val putRequest = okhttp3.Request.Builder()
+                .url(url)
+                .header("Authorization", "token $githubToken")
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .header("User-Agent", "CP-Hub-Android-App")
+                .put(requestBody)
+                .build()
+                
+            try {
+                client.newCall(putRequest).execute().use { response ->
+                    if (response.isSuccessful) {
+                        successCount++
+                    } else {
+                        val errBody = response.body?.string() ?: ""
+                        failMessage = "File ${txtFile.name} failed (HTTP ${response.code}): $errBody"
+                    }
+                }
+            } catch (e: Exception) {
+                failMessage = "File ${txtFile.name} failed: ${e.localizedMessage}"
+            }
+        }
+        
+        if (successCount == txtFiles.size) {
+            Result.success(successCount)
+        } else {
+            Result.failure(Exception("Uploaded $successCount out of ${txtFiles.size} files. Error: $failMessage"))
+        }
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+}
+
 @Composable
 fun VideoGridHomeScreen() {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isUploading by remember { mutableStateOf(false) }
+    var uploadMessage by remember { mutableStateOf("") }
 
     // Create CP Hub empty folder inside external/internal storage on launch
     LaunchedEffect(Unit) {
@@ -791,7 +933,7 @@ fun VideoGridHomeScreen() {
             }
         }
 
-        // Bottom Bar with Load More Button
+        // Bottom Bar with Upload to GitHub Button
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -803,7 +945,33 @@ fun VideoGridHomeScreen() {
         ) {
             Button(
                 onClick = {
-                    // Do nothing for now as requested
+                    if (!isUploading) {
+                        isUploading = true
+                        uploadMessage = "Initializing..."
+                        coroutineScope.launch {
+                            val videoNames = videoList.map { it.title }
+                            val result = saveAndSyncToGitHub(videoNames) { progress ->
+                                uploadMessage = progress
+                            }
+                            isUploading = false
+                            result.fold(
+                                onSuccess = { count ->
+                                    Toast.makeText(
+                                        context,
+                                        "Niyamayi machan! Saved and uploaded $count file(s) to GitHub!",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                onFailure = { error ->
+                                    Toast.makeText(
+                                        context,
+                                        "Kussiya paththe mokak hari scene ekak: ${error.localizedMessage}",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                        }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -821,14 +989,14 @@ fun VideoGridHomeScreen() {
                     modifier = Modifier.fillMaxHeight()
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Load More Icon",
+                        imageVector = Icons.Default.CloudUpload,
+                        contentDescription = "Upload to GitHub Icon",
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Load More...",
+                        text = "Upload to GitHub",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -838,13 +1006,58 @@ fun VideoGridHomeScreen() {
                 }
             }
             Text(
-                text = "DHEN ALUTH EKAK ADD KARAMU",
+                text = "DHEN MEKA GITHUB EKATA PUSH KARAMU",
                 style = MaterialTheme.typography.labelSmall.copy(
                     color = ThemeTextSecondary,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp
                 )
             )
+        }
+    }
+
+    // Progress Dialog Overlay for GitHub Uploads
+    if (isUploading) {
+        Dialog(
+            onDismissRequest = { /* Prevent dismissing during operations */ },
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2C))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = ThemePrimary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Syncing with GitHub...",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = uploadMessage,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color.White.copy(alpha = 0.7f)
+                        ),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 
