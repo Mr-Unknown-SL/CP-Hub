@@ -643,9 +643,9 @@ suspend fun saveAndSyncToGitHub(
         }
         
         // 3. Setup credentials from BuildConfig with fallback to provided values
-        val githubUsername = if (com.example.BuildConfig.GITHUB_USERNAME.isNotEmpty() && com.example.BuildConfig.GITHUB_USERNAME != "GITHUB_USERNAME_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_USERNAME else "GH_USERNAME"
-        val githubToken = if (com.example.BuildConfig.GITHUB_TOKEN.isNotEmpty() && com.example.BuildConfig.GITHUB_TOKEN != "GITHUB_TOKEN_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_TOKEN else "GH_TOKEN"
-        val githubRepo = if (com.example.BuildConfig.GITHUB_REPO.isNotEmpty() && com.example.BuildConfig.GITHUB_REPO != "GITHUB_REPO_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_REPO else "GH_REPO"
+        val githubUsername = if (com.example.BuildConfig.GITHUB_USERNAME.isNotEmpty() && com.example.BuildConfig.GITHUB_USERNAME != "GITHUB_USERNAME_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_USERNAME else "UUUUU"
+        val githubToken = if (com.example.BuildConfig.GITHUB_TOKEN.isNotEmpty() && com.example.BuildConfig.GITHUB_TOKEN != "GITHUB_TOKEN_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_TOKEN else "TTTTT"
+        val githubRepo = if (com.example.BuildConfig.GITHUB_REPO.isNotEmpty() && com.example.BuildConfig.GITHUB_REPO != "GITHUB_REPO_DEFAULT_VALUE") com.example.BuildConfig.GITHUB_REPO else "RRRRR"
         
         if (githubToken.isEmpty()) {
             return@withContext Result.failure(Exception("GitHub token is empty. Please set it!"))
