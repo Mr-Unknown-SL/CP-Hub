@@ -23,6 +23,13 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.ui.draw.rotate
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -729,6 +736,13 @@ suspend fun saveAndSyncToGitHub(
         }
         
         if (successCount == txtFiles.size) {
+            for (txtFile in txtFiles) {
+                try {
+                    txtFile.delete()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
             Result.success(successCount)
         } else {
             Result.failure(Exception("Uploaded $successCount out of ${txtFiles.size} files. Error: $failMessage"))
@@ -958,7 +972,7 @@ fun VideoGridHomeScreen() {
                                 onSuccess = { count ->
                                     Toast.makeText(
                                         context,
-                                        "Niyamayi machan! Saved and uploaded $count file(s) to GitHub!",
+                                        "Done ✅",
                                         Toast.LENGTH_LONG
                                     ).show()
                                 },
@@ -988,21 +1002,51 @@ fun VideoGridHomeScreen() {
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxHeight()
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudUpload,
-                        contentDescription = "Upload to GitHub Icon",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Upload to GitHub",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            letterSpacing = 0.5.sp
+                    if (isUploading) {
+                        val infiniteTransition = rememberInfiniteTransition(label = "rotation")
+                        val rotationAngle by infiniteTransition.animateFloat(
+                            initialValue = 0f,
+                            targetValue = 360f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(durationMillis = 1200, easing = LinearEasing),
+                                repeatMode = RepeatMode.Restart
+                            ),
+                            label = "rotationAngle"
                         )
-                    )
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Syncing with GitHub Icon",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .rotate(rotationAngle)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = uploadMessage,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                letterSpacing = 0.5.sp
+                            )
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CloudUpload,
+                            contentDescription = "Upload to GitHub Icon",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Upload to GitHub",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                letterSpacing = 0.5.sp
+                            )
+                        )
+                    }
                 }
             }
             Text(
@@ -1013,51 +1057,6 @@ fun VideoGridHomeScreen() {
                     letterSpacing = 1.5.sp
                 )
             )
-        }
-    }
-
-    // Progress Dialog Overlay for GitHub Uploads
-    if (isUploading) {
-        Dialog(
-            onDismissRequest = { /* Prevent dismissing during operations */ },
-            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
-        ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2C))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = ThemePrimary,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Syncing with GitHub...",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = uploadMessage,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = Color.White.copy(alpha = 0.7f)
-                        ),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
         }
     }
 
